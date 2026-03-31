@@ -1,0 +1,242 @@
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+
+st.set_page_config(page_title="CareFlow AI Dashboard", layout="wide")
+
+# -----------------------------
+# 1. LOAD DATA
+# -----------------------------
+df = pd.read_csv("analysis_df_complete_cases.csv")
+
+# -----------------------------
+# 2. SIDEBAR FILTERS
+# -----------------------------
+st.title("CareFlow AI")
+st.subheader("High-Cost Risk Overview Dashboard")
+
+st.sidebar.header("Filters")
+
+region_options = ["All"] + sorted(df["region"].dropna().unique().tolist())
+site_options = ["All"] + sorted(df["site_id"].dropna().unique().tolist())
+
+selected_region = st.sidebar.selectbox("Region", region_options)
+selected_site = st.sidebar.selectbox("Site", site_options)
+show_high_cost_only = st.sidebar.checkbox("Show Only High-Cost Flagged Patients", value=True)
+
+# -----------------------------
+# 3. FILTER DATA
+# -----------------------------
+filtered_df = df.copy()
+
+if selected_region != "All":
+    filtered_df = filtered_df[filtered_df["region"] == selected_region]
+
+if selected_site != "All":
+    filtered_df = filtered_df[filtered_df["site_id"] == selected_site]
+
+# -----------------------------
+# 4. CALCULATE MODEL-BASED PRIORITY SCORE
+# -----------------------------
+filtered_df["model_priority_score"] = (
+    (filtered_df["total_adverse_events"] * 0.8945) +
+    (filtered_df["chronic_condition_count"] * 0.7753) +
+    (filtered_df["unique_drug_classes"] * 0.4406) +
+    (filtered_df["event_count_refill"] * 0.4078) +
+    (filtered_df["risk_score_initial"] * 0.2737)
+)
+
+# -----------------------------
+# 5. KPI CARDS
+# -----------------------------
+total_pts = len(filtered_df)
+high_cost_pct = (filtered_df["high_cost_flag"].mean() * 100) if total_pts > 0 else 0
+
+col1, col2 = st.columns(2)
+with col1:
+    st.metric("Total Patients", total_pts)
+with col2:
+    st.metric("Percent High-Cost", f"{high_cost_pct:.1f}%")
+
+st.caption(
+    f"Current View: Region = {selected_region}, Site = {selected_site}, "
+    f"N = {total_pts} Patients"
+)
+
+# -----------------------------
+# 6. HELPER FUNCTION FOR DRIVER CHARTS
+# -----------------------------
+def driver_chart(data, col_name, label, max_val, color_scale):
+    temp = data.copy()
+    temp[col_name] = temp[col_name].apply(
+        lambda x: f"{int(max_val)}+" if x >= max_val else str(int(x))
+    )
+
+    stats = (
+        temp.groupby(col_name)["high_cost_flag"]
+        .agg(["mean", "count", "sum"])
+        .reset_index()
+        .rename(columns={
+            "mean": "proportion_high_cost",
+            "count": "sample_size",
+            "sum": "high_cost_count"
+        })
+    )
+
+    ordered_labels = [str(i) for i in range(max_val)] + [f"{max_val}+"]
+    stats[col_name] = pd.Categorical(stats[col_name], categories=ordered_labels, ordered=True)
+    stats = stats.sort_values(col_name)
+
+    fig = px.bar(
+        stats,
+        x=col_name,
+        y="proportion_high_cost",
+        labels={
+            col_name: label,
+            "proportion_high_cost": "Proportion Of High-Cost Patients"
+        },
+        title=f"{label} Vs. Proportion Of High-Cost Patients",
+        color="proportion_high_cost",
+        color_continuous_scale=color_scale,
+        custom_data=["sample_size", "high_cost_count"]
+    )
+
+    fig.update_traces(
+        hovertemplate=
+        f"{label}: %{{x}}<br>" +
+        "Proportion High-Cost: %{y:.1%}<br>" +
+        "Sample Size (N): %{customdata[0]}<br>" +
+        "High-Cost Patients: %{customdata[1]}<extra></extra>"
+    )
+
+    fig.update_yaxes(tickformat=".0%", title="Proportion Of High-Cost Patients")
+    fig.update_xaxes(title=label)
+    fig.update_layout(
+        template="plotly_white",
+        coloraxis_showscale=False,
+        title_font=dict(size=18),
+        font=dict(size=13)
+    )
+    return fig
+
+# -----------------------------
+# 7. CHARTS
+# -----------------------------
+st.write("### Key Predictor Patterns")
+st.caption("Proportions are calculated within the currently filtered patient group. Hover over bars to view sample size (N) and high-cost count for each bin.")
+
+col3, col4 = st.columns(2)
+with col3:
+    st.plotly_chart(
+        driver_chart(
+            filtered_df,
+            "total_adverse_events",
+            "Total Adverse Events",
+            5,
+            "Blues"
+        ),
+        use_container_width=True
+    )
+with col4:
+    st.plotly_chart(
+        driver_chart(
+            filtered_df,
+            "chronic_condition_count",
+            "Chronic Condition Count",
+            6,
+            "Purples"
+        ),
+        use_container_width=True
+    )
+
+col5, col6 = st.columns(2)
+with col5:
+    st.plotly_chart(
+        driver_chart(
+            filtered_df,
+            "event_count_refill",
+            "Refill Event Count",
+            5,
+            "Oranges"
+        ),
+        use_container_width=True
+    )
+with col6:
+    st.plotly_chart(
+        driver_chart(
+            filtered_df,
+            "unique_drug_classes",
+            "Unique Drug Classes",
+            6,
+            "Reds"
+        ),
+        use_container_width=True
+    )
+
+# -----------------------------
+# 8. INITIAL RISK SCORE DISTRIBUTION
+# -----------------------------
+st.write("### Distribution Of Initial Risk Score Among High-Cost Patients")
+
+high_cost_only_df = filtered_df[filtered_df["high_cost_flag"] == 1]
+
+fig_risk = px.histogram(
+    high_cost_only_df,
+    x="risk_score_initial",
+    nbins=20,
+    title="Distribution Of Initial Risk Score Among High-Cost Patients",
+    labels={"risk_score_initial": "Initial Risk Score", "count": "Number Of Patients"},
+    color_discrete_sequence=["#1F4E79"]
+)
+fig_risk.update_layout(
+    template="plotly_white",
+    title_font=dict(size=18),
+    font=dict(size=13)
+)
+fig_risk.update_xaxes(title="Initial Risk Score")
+fig_risk.update_yaxes(title="Number Of Patients")
+
+st.plotly_chart(fig_risk, use_container_width=True)
+
+# -----------------------------
+# 9. HIGH-RISK REGISTRY
+# -----------------------------
+st.write("### High-Risk Registry")
+
+table_df = filtered_df.copy()
+
+if show_high_cost_only:
+    table_df = table_df[table_df["high_cost_flag"] == 1]
+
+table_df = table_df.sort_values(by="model_priority_score", ascending=False)
+
+display_df = table_df[
+    [
+        "patient_id",
+        "model_priority_score",
+        "total_adverse_events",
+        "chronic_condition_count",
+        "event_count_refill",
+        "unique_drug_classes",
+        "risk_score_initial",
+        "site_id",
+        "region"
+    ]
+].head(10).copy()
+
+display_df = display_df.rename(columns={
+    "patient_id": "Patient ID",
+    "model_priority_score": "Model Priority Score",
+    "total_adverse_events": "Total Adverse Events",
+    "chronic_condition_count": "Chronic Condition Count",
+    "event_count_refill": "Refill Event Count",
+    "unique_drug_classes": "Unique Drug Classes",
+    "risk_score_initial": "Initial Risk Score",
+    "site_id": "Site",
+    "region": "Region"
+})
+
+display_df["Model Priority Score"] = display_df["Model Priority Score"].round(2)
+display_df["Initial Risk Score"] = display_df["Initial Risk Score"].round(1)
+
+st.dataframe(display_df, use_container_width=True)
