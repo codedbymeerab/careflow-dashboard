@@ -35,7 +35,7 @@ if selected_site != "All":
     filtered_df = filtered_df[filtered_df["site_id"] == selected_site]
 
 # -----------------------------
-# 4. CALCULATE MODEL-BASED PRIORITY SCORE
+# 4. CALCULATE MODEL-INFORMED PRIORITY SCORE
 # -----------------------------
 filtered_df["model_priority_score"] = (
     (filtered_df["total_adverse_events"] * 0.8945) +
@@ -63,7 +63,60 @@ st.caption(
 )
 
 # -----------------------------
-# 6. HELPER FUNCTION FOR DRIVER CHARTS
+# 6. HELPER FUNCTION: CONTEXT CHARTS
+# -----------------------------
+def context_chart(data, col_name, label, color_scale):
+    temp = data.copy()
+    temp = temp[temp[col_name].notna()]
+
+    stats = (
+        temp.groupby(col_name)["high_cost_flag"]
+        .agg(["mean", "count", "sum"])
+        .reset_index()
+        .rename(columns={
+            "mean": "proportion_high_cost",
+            "count": "sample_size",
+            "sum": "high_cost_count"
+        })
+        .sort_values("proportion_high_cost", ascending=True)
+    )
+
+    fig = px.bar(
+        stats,
+        x="proportion_high_cost",
+        y=col_name,
+        orientation="h",
+        labels={
+            col_name: label,
+            "proportion_high_cost": "Proportion Of High-Cost Patients"
+        },
+        title=label,
+        color="proportion_high_cost",
+        color_continuous_scale=color_scale,
+        custom_data=["sample_size", "high_cost_count"]
+    )
+
+    fig.update_traces(
+        hovertemplate=
+        f"{label}: %{{y}}<br>" +
+        "Proportion High-Cost: %{x:.1%}<br>" +
+        "Sample Size (N): %{customdata[0]}<br>" +
+        "High-Cost Patients: %{customdata[1]}<extra></extra>"
+    )
+
+    fig.update_xaxes(tickformat=".0%", title="Proportion Of High-Cost Patients")
+    fig.update_yaxes(title=label)
+    fig.update_layout(
+        template="plotly_white",
+        coloraxis_showscale=False,
+        title_font=dict(size=18),
+        font=dict(size=13),
+        height=450
+    )
+    return fig
+
+# -----------------------------
+# 7. HELPER FUNCTION: PREDICTOR CHARTS
 # -----------------------------
 def driver_chart(data, col_name, label, max_val, color_scale):
     temp = data.copy()
@@ -83,7 +136,11 @@ def driver_chart(data, col_name, label, max_val, color_scale):
     )
 
     ordered_labels = [str(i) for i in range(max_val)] + [f"{max_val}+"]
-    stats[col_name] = pd.Categorical(stats[col_name], categories=ordered_labels, ordered=True)
+    stats[col_name] = pd.Categorical(
+        stats[col_name],
+        categories=ordered_labels,
+        ordered=True
+    )
     stats = stats.sort_values(col_name)
 
     fig = px.bar(
@@ -94,7 +151,7 @@ def driver_chart(data, col_name, label, max_val, color_scale):
             col_name: label,
             "proportion_high_cost": "Proportion Of High-Cost Patients"
         },
-        title=f"{label} Vs. Proportion Of High-Cost Patients",
+        title=label,
         color="proportion_high_cost",
         color_continuous_scale=color_scale,
         custom_data=["sample_size", "high_cost_count"]
@@ -114,52 +171,58 @@ def driver_chart(data, col_name, label, max_val, color_scale):
         template="plotly_white",
         coloraxis_showscale=False,
         title_font=dict(size=18),
-        font=dict(size=13)
+        font=dict(size=13),
+        height=420
     )
     return fig
 
 # -----------------------------
-# 7. CHARTS
+# 8. PATIENT CONTEXT AND ACCESS PATTERNS
 # -----------------------------
-st.write("### Key Predictor Patterns")
+st.write("### Patient Context And Access Patterns")
 st.caption(
-    "Proportions are calculated within the currently filtered patient group. "
-    "Hover over bars to view sample size (N) and high-cost count for each bin."
+    "These charts show how high-cost prevalence differs across patient context and access groups within the current filtered population."
 )
 
 col3, col4 = st.columns(2)
 with col3:
     st.plotly_chart(
-        driver_chart(
+        context_chart(
             filtered_df,
-            "total_adverse_events",
-            "Total Adverse Events",
-            5,
-            "Blues"
+            "income_band",
+            "Income Band",
+            "Tealgrn"
         ),
         use_container_width=True
     )
 with col4:
     st.plotly_chart(
-        driver_chart(
+        context_chart(
             filtered_df,
-            "chronic_condition_count",
-            "Chronic Condition Count",
-            6,
-            "Purples"
+            "language_pref",
+            "Language Preference",
+            "PuBuGn"
         ),
         use_container_width=True
     )
+
+# -----------------------------
+# 9. KEY PREDICTOR PATTERNS
+# -----------------------------
+st.write("### Key Predictor Patterns")
+st.caption(
+    "Bars show the proportion of high-cost patients within the currently filtered group. Hover to view sample size (N) and high-cost count for each bin."
+)
 
 col5, col6 = st.columns(2)
 with col5:
     st.plotly_chart(
         driver_chart(
             filtered_df,
-            "event_count_refill",
-            "Refill Event Count",
+            "total_adverse_events",
+            "Adverse Events",
             5,
-            "Oranges"
+            "Blues"
         ),
         use_container_width=True
     )
@@ -167,8 +230,32 @@ with col6:
     st.plotly_chart(
         driver_chart(
             filtered_df,
+            "chronic_condition_count",
+            "Chronic Condition Burden",
+            6,
+            "Purples"
+        ),
+        use_container_width=True
+    )
+
+col7, col8 = st.columns(2)
+with col7:
+    st.plotly_chart(
+        driver_chart(
+            filtered_df,
+            "event_count_refill",
+            "Refill Activity",
+            5,
+            "Oranges"
+        ),
+        use_container_width=True
+    )
+with col8:
+    st.plotly_chart(
+        driver_chart(
+            filtered_df,
             "unique_drug_classes",
-            "Unique Drug Classes",
+            "Medication Complexity",
             6,
             "Reds"
         ),
@@ -176,9 +263,9 @@ with col6:
     )
 
 # -----------------------------
-# 8. INITIAL RISK SCORE DISTRIBUTION
+# 10. INITIAL RISK SCORE DISTRIBUTION
 # -----------------------------
-st.write("### Distribution Of Initial Risk Score Among High-Cost Patients")
+st.write("### Initial Risk Score Distribution")
 
 high_cost_only_df = filtered_df[filtered_df["high_cost_flag"] == 1]
 
@@ -186,17 +273,19 @@ fig_risk = px.histogram(
     high_cost_only_df,
     x="risk_score_initial",
     nbins=20,
-    title="Distribution Of Initial Risk Score Among High-Cost Patients",
+    title="Initial Risk Score Distribution",
     labels={
         "risk_score_initial": "Initial Risk Score",
         "count": "Number Of Patients"
     },
     color_discrete_sequence=["#1F4E79"]
 )
+
 fig_risk.update_layout(
     template="plotly_white",
     title_font=dict(size=18),
-    font=dict(size=13)
+    font=dict(size=13),
+    height=450
 )
 fig_risk.update_xaxes(title="Initial Risk Score")
 fig_risk.update_yaxes(title="Number Of Patients")
@@ -204,11 +293,11 @@ fig_risk.update_yaxes(title="Number Of Patients")
 st.plotly_chart(fig_risk, use_container_width=True)
 
 # -----------------------------
-# 9. PRIORITY PATIENT LIST
+# 11. PRIORITY PATIENT LIST
 # -----------------------------
 st.write("### Priority Patient List")
 st.caption(
-    "Showing the top 10 patients in the current filtered view, ranked by model priority score."
+    "Showing the top 10 patients in the current filtered view, ranked by model-informed priority score."
 )
 
 table_df = filtered_df.copy()
@@ -230,7 +319,7 @@ display_df = table_df[
 
 display_df = display_df.rename(columns={
     "patient_id": "Patient ID",
-    "model_priority_score": "Model Priority Score",
+    "model_priority_score": "Model-Informed Priority Score",
     "total_adverse_events": "Total Adverse Events",
     "chronic_condition_count": "Chronic Condition Count",
     "event_count_refill": "Refill Event Count",
@@ -240,7 +329,7 @@ display_df = display_df.rename(columns={
     "region": "Region"
 })
 
-display_df["Model Priority Score"] = display_df["Model Priority Score"].round(2)
+display_df["Model-Informed Priority Score"] = display_df["Model-Informed Priority Score"].round(2)
 display_df["Initial Risk Score"] = display_df["Initial Risk Score"].round(1)
 
 st.dataframe(display_df, use_container_width=True, hide_index=True)
