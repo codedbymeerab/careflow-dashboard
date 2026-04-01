@@ -177,9 +177,9 @@ def driver_chart(data, col_name, label, max_val, color_scale):
     return fig
 
 # -----------------------------
-# 8. PATIENT CONTEXT AND ACCESS PATTERNS
+# 8. DEMOGRAPHIC PATTERNS
 # -----------------------------
-st.write("### Patient Context And Access Patterns")
+st.write("### Demographic Patterns")
 st.caption(
     "These charts show how high-cost prevalence differs across patient context and access groups within the current filtered population."
 )
