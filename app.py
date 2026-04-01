@@ -22,7 +22,6 @@ site_options = ["All"] + sorted(df["site_id"].dropna().unique().tolist())
 
 selected_region = st.sidebar.selectbox("Region", region_options)
 selected_site = st.sidebar.selectbox("Site", site_options)
-show_high_cost_only = st.sidebar.checkbox("Show Only High-Cost Flagged Patients", value=True)
 
 # -----------------------------
 # 3. FILTER DATA
@@ -123,7 +122,10 @@ def driver_chart(data, col_name, label, max_val, color_scale):
 # 7. CHARTS
 # -----------------------------
 st.write("### Key Predictor Patterns")
-st.caption("Proportions are calculated within the currently filtered patient group. Hover over bars to view sample size (N) and high-cost count for each bin.")
+st.caption(
+    "Proportions are calculated within the currently filtered patient group. "
+    "Hover over bars to view sample size (N) and high-cost count for each bin."
+)
 
 col3, col4 = st.columns(2)
 with col3:
@@ -185,7 +187,10 @@ fig_risk = px.histogram(
     x="risk_score_initial",
     nbins=20,
     title="Distribution Of Initial Risk Score Among High-Cost Patients",
-    labels={"risk_score_initial": "Initial Risk Score", "count": "Number Of Patients"},
+    labels={
+        "risk_score_initial": "Initial Risk Score",
+        "count": "Number Of Patients"
+    },
     color_discrete_sequence=["#1F4E79"]
 )
 fig_risk.update_layout(
@@ -199,15 +204,14 @@ fig_risk.update_yaxes(title="Number Of Patients")
 st.plotly_chart(fig_risk, use_container_width=True)
 
 # -----------------------------
-# 9. HIGH-RISK REGISTRY
+# 9. PRIORITY PATIENT LIST
 # -----------------------------
-st.write("### High-Risk Registry")
+st.write("### Priority Patient List")
+st.caption(
+    "Showing the top 10 patients in the current filtered view, ranked by model priority score."
+)
 
 table_df = filtered_df.copy()
-
-if show_high_cost_only:
-    table_df = table_df[table_df["high_cost_flag"] == 1]
-
 table_df = table_df.sort_values(by="model_priority_score", ascending=False)
 
 display_df = table_df[
@@ -239,4 +243,4 @@ display_df = display_df.rename(columns={
 display_df["Model Priority Score"] = display_df["Model Priority Score"].round(2)
 display_df["Initial Risk Score"] = display_df["Initial Risk Score"].round(1)
 
-st.dataframe(display_df, use_container_width=True)
+st.dataframe(display_df, use_container_width=True, hide_index=True)
