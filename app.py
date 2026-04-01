@@ -7,7 +7,7 @@ st.set_page_config(page_title="CareFlow AI Dashboard", layout="wide")
 # -----------------------------
 # 1. LOAD DATA
 # -----------------------------
-df = pd.read_csv("analysis_df_complete_cases.csv")
+df = pd.read_csv("dashboard_scored.csv")
 
 # -----------------------------
 # 2. SIDEBAR FILTERS
@@ -35,18 +35,7 @@ if selected_site != "All":
     filtered_df = filtered_df[filtered_df["site_id"] == selected_site]
 
 # -----------------------------
-# 4. CALCULATE MODEL-INFORMED PRIORITY SCORE
-# -----------------------------
-filtered_df["model_priority_score"] = (
-    (filtered_df["total_adverse_events"] * 0.8945) +
-    (filtered_df["chronic_condition_count"] * 0.7753) +
-    (filtered_df["unique_drug_classes"] * 0.4406) +
-    (filtered_df["event_count_refill"] * 0.4078) +
-    (filtered_df["risk_score_initial"] * 0.2737)
-)
-
-# -----------------------------
-# 5. KPI CARDS
+# 4. KPI CARDS
 # -----------------------------
 total_pts = len(filtered_df)
 high_cost_pct = (filtered_df["high_cost_flag"].mean() * 100) if total_pts > 0 else 0
@@ -63,7 +52,7 @@ st.caption(
 )
 
 # -----------------------------
-# 6. HELPER FUNCTION: CONTEXT CHARTS
+# 5. HELPER FUNCTION: CONTEXT CHARTS
 # -----------------------------
 def context_chart(data, col_name, label, color_scale):
     temp = data.copy()
@@ -96,7 +85,7 @@ def context_chart(data, col_name, label, color_scale):
         stats = stats.sort_values("proportion_high_cost", ascending=True)
 
     # give x-axis some breathing room
-    x_max = max(0.35, stats["proportion_high_cost"].max() * 1.15)
+    x_max = max(0.35, stats["proportion_high_cost"].max() * 1.15) if len(stats) > 0 else 0.35
 
     fig = px.bar(
         stats,
@@ -137,7 +126,7 @@ def context_chart(data, col_name, label, color_scale):
     return fig
 
 # -----------------------------
-# 7. HELPER FUNCTION: PREDICTOR CHARTS
+# 6. HELPER FUNCTION: PREDICTOR CHARTS
 # -----------------------------
 def driver_chart(data, col_name, label, max_val, color_scale):
     temp = data.copy()
@@ -198,7 +187,7 @@ def driver_chart(data, col_name, label, max_val, color_scale):
     return fig
 
 # -----------------------------
-# 8. DEMOGRAPHIC PATTERNS
+# 7. DEMOGRAPHIC PATTERNS
 # -----------------------------
 st.write("### Demographic Patterns")
 st.caption(
@@ -228,7 +217,7 @@ with col4:
     )
 
 # -----------------------------
-# 9. KEY PREDICTOR PATTERNS
+# 8. KEY PREDICTOR PATTERNS
 # -----------------------------
 st.write("### Key Predictor Patterns")
 st.caption(
@@ -284,9 +273,9 @@ with col8:
     )
 
 # -----------------------------
-# 10. INITIAL RISK SCORE DISTRIBUTION
+# 9. BASELINE ENROLLMENT RISK SCORE DISTRIBUTION
 # -----------------------------
-st.write("### Initial Risk Score Distribution")
+st.write("### Baseline Enrollment Risk Score Distribution")
 
 high_cost_only_df = filtered_df[filtered_df["high_cost_flag"] == 1]
 
@@ -294,7 +283,7 @@ fig_risk = px.histogram(
     high_cost_only_df,
     x="risk_score_initial",
     nbins=20,
-    title="Initial Risk Score Distribution",
+    title="Baseline Enrollment Risk Score Distribution",
     labels={
         "risk_score_initial": "Initial Risk Score",
         "count": "Number Of Patients"
@@ -314,20 +303,20 @@ fig_risk.update_yaxes(title="Number Of Patients")
 st.plotly_chart(fig_risk, use_container_width=True)
 
 # -----------------------------
-# 11. PRIORITY PATIENT LIST
+# 10. PRIORITY PATIENT LIST
 # -----------------------------
 st.write("### Priority Patient List")
 st.caption(
-    "Showing the top 10 patients in the current filtered view, ranked by model-informed priority score."
+    "Showing the top 10 patients in the current filtered view, ranked by predicted high-cost risk from the final logistic regression model. Displayed predictors provide context only; the score reflects all predictors in the final model."
 )
 
 table_df = filtered_df.copy()
-table_df = table_df.sort_values(by="model_priority_score", ascending=False)
+table_df = table_df.sort_values(by="predicted_high_cost_risk", ascending=False)
 
 display_df = table_df[
     [
         "patient_id",
-        "model_priority_score",
+        "predicted_high_cost_pct",
         "total_adverse_events",
         "chronic_condition_count",
         "event_count_refill",
@@ -340,7 +329,7 @@ display_df = table_df[
 
 display_df = display_df.rename(columns={
     "patient_id": "Patient ID",
-    "model_priority_score": "Model-Informed Priority Score",
+    "predicted_high_cost_pct": "Predicted High-Cost Risk (%)",
     "total_adverse_events": "Total Adverse Events",
     "chronic_condition_count": "Chronic Condition Count",
     "event_count_refill": "Refill Event Count",
@@ -350,7 +339,7 @@ display_df = display_df.rename(columns={
     "region": "Region"
 })
 
-display_df["Model-Informed Priority Score"] = display_df["Model-Informed Priority Score"].round(2)
+display_df["Predicted High-Cost Risk (%)"] = display_df["Predicted High-Cost Risk (%)"].round(1)
 display_df["Initial Risk Score"] = display_df["Initial Risk Score"].round(1)
 
 st.dataframe(display_df, use_container_width=True, hide_index=True)
