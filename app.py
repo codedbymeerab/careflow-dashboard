@@ -78,16 +78,33 @@ def context_chart(data, col_name, label, color_scale):
             "count": "sample_size",
             "sum": "high_cost_count"
         })
-        .sort_values("proportion_high_cost", ascending=True)
     )
+
+    # cleaner display labels
+    if col_name == "income_band":
+        display_map = {
+            "low": "Low",
+            "medium": "Medium",
+            "high": "High"
+        }
+        stats["display_label"] = stats[col_name].astype(str).str.strip().str.lower().map(display_map).fillna(stats[col_name])
+        order = ["Low", "Medium", "High"]
+        stats["display_label"] = pd.Categorical(stats["display_label"], categories=order, ordered=True)
+        stats = stats.sort_values("display_label")
+    else:
+        stats["display_label"] = stats[col_name].astype(str).str.strip().str.title()
+        stats = stats.sort_values("proportion_high_cost", ascending=True)
+
+    # give x-axis some breathing room
+    x_max = max(0.35, stats["proportion_high_cost"].max() * 1.15)
 
     fig = px.bar(
         stats,
         x="proportion_high_cost",
-        y=col_name,
+        y="display_label",
         orientation="h",
         labels={
-            col_name: label,
+            "display_label": label,
             "proportion_high_cost": "Proportion Of High-Cost Patients"
         },
         title=label,
@@ -104,14 +121,18 @@ def context_chart(data, col_name, label, color_scale):
         "High-Cost Patients: %{customdata[1]}<extra></extra>"
     )
 
-    fig.update_xaxes(tickformat=".0%", title="Proportion Of High-Cost Patients")
+    fig.update_xaxes(
+        tickformat=".0%",
+        title="Proportion Of High-Cost Patients",
+        range=[0, x_max]
+    )
     fig.update_yaxes(title=label)
     fig.update_layout(
         template="plotly_white",
         coloraxis_showscale=False,
         title_font=dict(size=18),
         font=dict(size=13),
-        height=450
+        height=420
     )
     return fig
 
